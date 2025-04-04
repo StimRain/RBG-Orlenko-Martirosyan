@@ -2,135 +2,98 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
-    [Header("Movement")]
-    public float moveSpeed = 5f;
+    public float walkSpeed = 5f;
     public float runSpeed = 10f;
-    public float rotationSpeed = 100f;
+    public float attackRange = 2f;
+    public LayerMask enemyLayer; // Слой врагов
 
-    [Header("Combat")]
-    public float physicalDamage = 10f;
-    public float magicDamage = 20f;
-    public float magicCooldown = 2f;
-    public Transform attackPoint; 
-    public float attackRange = 1f;
-    public LayerMask enemyLayers; 
-
-    [Header("Health")]
-    public float maxHP = 100f;
-    public float currentHP;
-
-    private float nextMagicTime = 0f;
+    private CharacterStats characterStats;
     private Rigidbody rb;
-    private Animator animator;
-    private bool isDead = false;
-
-
+   // private Animator animator;
 
     void Start()
     {
+        characterStats = GetComponent<CharacterStats>();
         rb = GetComponent<Rigidbody>();
-      //animator = GetComponent<Animator>();
-        currentHP = maxHP;
+     //   animator = GetComponentInChildren<Animator>();
+
+        if (characterStats == null) Debug.LogError("CharacterStats компонент не найден!");
+        if (rb == null) Debug.LogError("Rigidbody компонент не найден!");
+    //    if (animator == null) Debug.LogError("Animator не найден!");
     }
 
     void Update()
     {
-        if (isDead) return;
+        if (characterStats.isDead) return;
 
-
+        // Получаем направления движения
         float horizontal = Input.GetAxis("Horizontal");
         float vertical = Input.GetAxis("Vertical");
 
-        Vector3 movement = new Vector3(horizontal, 0f, vertical);
-        movement.Normalize();
+        // Создаем вектор движения в локальных координатах
+        Vector3 direction = new Vector3(horizontal, 0f, vertical).normalized;
 
-
-
-        if (movement != Vector3.zero)
+        // Изменяем направление в зависимости от направления камеры
+        if (direction.magnitude > 0)
         {
+            // Преобразуем локальные координаты в глобальные
+            Vector3 forward = Camera.main.transform.TransformDirection(Vector3.forward);
+            Vector3 right = Camera.main.transform.TransformDirection(Vector3.right);
+            forward.y = 0; // Обнуляем высоту
+            right.y = 0; // Обнуляем высоту
+            forward.Normalize();
+            right.Normalize();
+            direction = (forward * vertical + right * horizontal).normalized; // Новое направление движения
+        }
 
-            Quaternion targetRotation = Quaternion.LookRotation(movement);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
-
-
-
-            rb.linearVelocity = transform.forward * movement.magnitude * (Input.GetKey(KeyCode.LeftShift) ? runSpeed : moveSpeed);
-
+        // Бег
+        float speed = Input.GetKey(KeyCode.LeftShift) ? runSpeed : walkSpeed;
+        /*
+        // Анимации передвижения
+        if (direction.magnitude > 0)
+        {
+            animator.SetBool("isWalking", true);
+            if (Input.GetKey(KeyCode.LeftShift))
+                animator.SetBool("isRunning", true);
+            else
+                animator.SetBool("isRunning", false);
         }
         else
         {
-            rb.linearVelocity = Vector3.zero; 
+            animator.SetBool("isWalking", false);
+            animator.SetBool("isRunning", false);
+        }
+        */
+        // Движение
+        rb.MovePosition(transform.position + direction * speed * Time.deltaTime);
+
+        // Поворот персонажа в сторону движения
+        if (direction != Vector3.zero)
+        {
+            transform.rotation = Quaternion.LookRotation(direction);
         }
 
-        if (Input.GetKey(KeyCode.LeftShift))
+        // Атака
+        if (Input.GetMouseButtonDown(0)) // Физическая атака
         {
-            movement *= runSpeed;
-         //   animator.SetBool("isRunning", true);
+            characterStats.Attack(DamageType.Physical, FindTarget());
         }
-        else
+        else if (Input.GetMouseButtonDown(1)) // Магическая атака
         {
-            movement *= moveSpeed;
-       //     animator.SetBool("isRunning", false);
-        }
-
-        rb.linearVelocity = movement;
-
-        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (idle/walk/run) based on velocity
-       // animator.SetFloat("Speed", rb.velocity.magnitude);
-
-
-        // пїЅпїЅпїЅпїЅпїЅ
-        if (Input.GetMouseButtonDown(0))
-        {
-         //   animator.SetTrigger("Attack");
-            PhysicalAttack();
-        }
-
-        if (Input.GetMouseButtonDown(1) && Time.time > nextMagicTime)
-        {
-            nextMagicTime = Time.time + magicCooldown;
-        //    animator.SetTrigger("MagicAttack");
-            MagicAttack();
+            characterStats.Attack(DamageType.Magical, FindTarget());
         }
     }
 
-
-    void PhysicalAttack()
+    private Transform FindTarget()
     {
-        // пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
-        Collider[] hitEnemies = Physics.OverlapSphere(attackPoint.position, attackRange, enemyLayers);
-
-        foreach (Collider enemy in hitEnemies)
+        // Raycast для определения цели в радиусе атаки
+        RaycastHit hit;
+        if (Physics.Raycast(transform.position, transform.forward, out hit, attackRange, enemyLayer))
         {
-           // enemy.GetComponent<EnemyController>()?.TakeDamage(physicalDamage);
+            Debug.DrawRay(transform.position, transform.forward * attackRange, Color.red, 1f);
+            return hit.transform;
         }
+
+        return null;
     }
-
-    void MagicAttack()
-    {
-        // пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
-        // ... (пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
-    }
-
-    public void TakeDamage(float damage)
-    {
-        currentHP -= damage;
-
-        if (currentHP <= 0)
-        {
-            Die();
-        }
-    }
-
-
-    void Die()
-    {
-        isDead = true;
-      //  animator.SetTrigger("Die");
-        rb.linearVelocity = Vector3.zero; // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
-        GetComponent<Collider>().enabled = false; // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
-        // ... (пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅпїЅпїЅ)
-    }
-
-
 }
